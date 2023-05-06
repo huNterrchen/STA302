@@ -1,0 +1,367 @@
+---
+title: "Do alcohol consumption and immunization coverage affect life expectancy? A cross-sectional study based on samples of countries in 2014"
+author: "Yihan Chen"
+date: December 20, 2022
+output:
+  pdf_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(knitr)
+library(rpart)
+library(partykit)
+library(ggplot2)
+library(alr4)
+library(dplyr)
+library(jtools)
+library(MPV)
+library(glmnet)
+library(rms)
+library(gglasso)
+library(glmnet)
+library(broom)
+library(stargazer)
+
+data <- read.csv("Life Expectancy Data.csv")
+data_2014 <- data %>%
+  filter(Year == 2014)
+
+```
+
+## Introduction
+The influence of vaccines on public health has proved to be profound, and it is one of the most potent tools against diseases. A study on the 2001 birth cohort in the US showed that regular child vaccines prevented around 33000 deaths and were very cost-effective (Zhou et al., 2005). During the ongoing global COVID-19 pandemic, vaccines have also been crucial in preventing contagion. A noticeable phenomenon during COVID-19 is vaccine hesitancy, which refers to delay and even refusal of vaccines. A study showed that more than 30% of the public was reluctant to receive COVID-19 vaccination based on a national sample in 2020 in the US (Callaghan et al., 2021).
+
+Another health concern that becomes even more salient during COVID-19 is alcohol consumption. A cross-sectional survey in Canada reveals that about 12% of the population increased their drinking frequency during COVID-19 (Thompson et al., 2021). Several studies have shown a negative correlation between life expectancy and alcohol consumption in Russia and Nordic countries (Inna et al., 2021; Olof et al., 2019).
+
+Currently, the research on both topics tends to focus on samples from middle and high-income countries, with limited studies on low-income countries. Hence, this study aims to study the effect of alcohol consumption and immunization coverage on life expectancy based on samples from both developed and developing countries in 2014. So that countries can make more informed choices on health policies to improve life expectancy.
+
+## Methods
+
+### Study sample
+This report is based on the Life Expectancy (WHO) dataset by KUMARRAJARSHI from <https://www.kaggle.com/datasets/kumarajarshi/life-expectancy-who>. The data were acquired from the WHO data repository and the United Nations website for 193 countries from 2000 to 2015. Six variables measure a country's economic level, and fourteen variables depict countries' demographic characteristics and public health levels. We will limit our data to only from 2014, so a multiple linear regression model is appropriate. 2014 is chosen because it is the dataset's most recent data with few missing values.
+
+### Assumption checking
+This report aims to assess the effect of alcohol consumption and immunization coverage on life expectancy by fitting a multiple linear regression model on the dataset. Our model will have *Life.expectancy* as the dependent variable, which measures the life expectancy of a country. As for independent variables, we have *Alcohol*, *Polio*, *Diphtheria*, and *Hepatitis. B*. *Alcohol* measures the alcohol consumption in liters per capita. *Polio*, *Diphtheria*, *Hepatitis. B* are all measures of vaccine coverage among one-year-olds in percentage. Apart from these variables, we also account for confounding variables *GDP* and *Population* in our initial model. Among all variables, these two are likely to be correlated with both independent and dependent variables. Also, research shows evidence of adverse health effects due to income inequality based on a sample of 148 countries from 1970 to 2010 (Linden et al., 2017). After deciding on our initial model, we then fit the model based on our dataset. 
+
+We check the assumptions for our model:
+
+- Construct a residual versus fitted plot to check linearity by assessing if there is any non-linear pattern. If there is a sign of violation, we should consider box-cox transformation.
+
+- Check the independence assumption by assessing if our observations are correlated with each other. 
+
+- Plot the square root of the standardized residuals versus the fitted values to evaluate the homoscedasticity assumption. A box-cox transformation may be needed if the plot has a non-horizontal linear pattern.
+
+- Check the normality assumption with a normal quantile-quantile plot of the standardized residuals. If the relationship is not one-to-one, we will apply the box-cox transformation to adjust. 
+
+It is crucial for us to also recheck the assumptions after transformation. However, since box-cox transformation affects our model's interpretability, it would not be appropriate for us to apply it based on our goal.
+
+### Identifying influential observations and multicollinearity
+We then identify any influential observations for our model; it is vital to acknowledge their existence since they affect our regression line noticeably. Nevertheless, we should only remove them with a contextual reason. The main criteria are the cook's distance, DFFITS, and DFBETAS. The cook's distance measures the effect of individual observation on all fitted values by checking if the cook's distance is greater than the 50th percentile of the $F_{p+1,n-p+1}$. Where *p* is the number of predictors and *n* is the number of observation. In terms of DFFITS, it measures the effect of each observation on its fitted value by checking if the absolute value of test statistics is greater than $2\sqrt{(p+1)/n}$. On the other hand, DFBETAS focus on the change in estimated coefficients when one observation is removed. If the absolute value of the test statistics is greater than $2/\sqrt{n}$, we record the observation as influential. By assessing influential points using various criteria, we have a more comprehensive view of them.
+
+Another potential issue to check is multicollinearity. We can identify multicollinearity by checking if any variance inflation factor is greater than 5. If multicollinearity occurs, we should respecify our model. However, we should keep all variables we are interested in based on our goal.
+
+### Model selection and validation
+In order to improve the predictive power of our model, we consider variable selection to find the best set of predictors. This report will apply stepwise selection based on AIC, BIC, and LASSO. We then consider adding extra predictors into our model to improve the fit by assessing if the adjusted $R^{2}$ of the new model is higher than the initial model. After having the final model, we check all assumptions, influential observations, and multicollinearity again.
+
+Finally, we estimate the prediction error of our final model using cross-validation. Since we have a small dataset, we split our dataset into three parts and fit the model with two parts. The remaining part is used as a test set to assess prediction errors. By using all three sets as test sets, we can use a calibration plot to assess the prediction accuracy of our model.
+
+
+## Results
+
+### Sample characteristics
+The health and economic characteristics of 131 countries in 2014 are shown in Table 1. The average life expectancy is relatively high at 70.51. The average alcohol consumption per capita is 3.06 liters. In terms of immunization coverage, Polio, Diphtheria, and Hepatitis. B vaccine has similar mean coverage of about 80%. We also see large standard deviations for all these variables, indicating the variability across countries.
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+Number_obeservations <- nrow(data)
+data_2015 <- data %>%
+  filter(Year == 2015)
+sum(is.na(data_2015$Country))
+sum(is.na(data_2015$Year))
+sum(is.na(data_2015$Alcohol))
+sum(is.na(data_2015$Polio))
+sum(is.na(data_2015$Hepatitis.B))
+sum(is.na(data_2015$Diphtheria)) 
+data_2015 %>%
+	summarise(missing_country = sum(is.na(data_2015$Country)), missing_year = sum(is.na(data_2015$Year)), missing_alcohol = sum(is.na(data_2015$Alcohol)), missing_polio = sum(is.na(data_2015$Polio)), missing_hepatitis.b = sum(is.na(data_2015$Hepatitis.B)), missing_diphtheria = sum(is.na(data_2015$Diphtheria))) %>%
+  kable(caption = "The missing values in the dataset")
+#too many missing in 2015, use 2014 instead
+Number_obeservations_2015 <- nrow(data_2015)
+#less missing in 2014, use 2014
+data_2014 <- data %>%
+  filter(Year == 2014)
+sum(is.na(data_2014$Country))
+sum(is.na(data_2014$Year))
+sum(is.na(data_2014$Alcohol))
+sum(is.na(data_2014$Polio))
+sum(is.na(data_2014$Hepatitis.B))
+sum(is.na(data_2014$Diphtheria)) 
+data_2014 %>%
+	summarise(missing_country = sum(is.na(data_2014$Country)), missing_year = sum(is.na(data_2014$Year)), missing_alcohol = sum(is.na(data_2014$Alcohol)), missing_polio = sum(is.na(data_2014$Polio)), missing_hepatitis.b = sum(is.na(data_2014$Hepatitis.B)), missing_diphtheria = sum(is.na(data_2014$Diphtheria))) %>%
+  kable(caption = "The missing values in the dataset")
+Number_obeservations_2014 <- nrow(data_2014)
+
+data_2014_cleaned <- data_2014[complete.cases(data_2014), ]
+```
+
+```{r, echo=FALSE,message=FALSE, warning=FALSE}
+options(scipen=999)
+Number_countries <- length(unique(data_2014_cleaned$Country))
+variable_names <- c("Life expectancy", "Alcohol consumption per capita", "Polio vaccine coverage among one-year-olds", "Diphtheria vaccine coverage among one-year-olds", "Hepatitis.B vaccine coverage among one-year-olds", "GDP per capita", "Population", "Adult mortality rate of both sexes", "Health expenditure as a percentage of total expenditure", "Deaths per 1000 due to HIV/AIDS", "Human Development Index")
+statistics_mean <- c(mean(data_2014_cleaned$Life.expectancy), mean(data_2014_cleaned$Alcohol), mean(data_2014_cleaned$Polio), mean(data_2014_cleaned$Diphtheria), mean(data_2014_cleaned$Hepatitis.B), mean(data_2014_cleaned$GDP), mean(data_2014_cleaned$Population), mean(data_2014_cleaned$Adult.Mortality), mean(data_2014_cleaned$Total.expenditure), mean(data_2014_cleaned$HIV.AIDS), mean(data_2014_cleaned$Income.composition.of.resources))
+statistics_sd <- c(sd(data_2014_cleaned$Life.expectancy), sd(data_2014_cleaned$Alcohol), sd(data_2014_cleaned$Polio), sd(data_2014_cleaned$Diphtheria), sd(data_2014_cleaned$Hepatitis.B), sd(data_2014_cleaned$GDP), sd(data_2014_cleaned$Population), sd(data_2014_cleaned$Adult.Mortality), sd(data_2014_cleaned$Total.expenditure), sd(data_2014_cleaned$HIV.AIDS), sd(data_2014_cleaned$Income.composition.of.resources))
+data.frame(variable_names,statistics_mean, statistics_sd) %>%
+  kable(caption = "Characteristics of 131 countries in year 2014",
+    col.names = c("Variable names", "Mean", "Standard Deviation"), digits=2)
+
+
+
+```
+### Initial Model
+
+```{r, include = FALSE, message=FALSE, warning=FALSE}
+###Code for final
+#Adding confounding variable
+expectancy.lm.confounding = lm(Life.expectancy ~ Alcohol+Polio+Diphtheria+Hepatitis.B+GDP+Population, data=data_2014_cleaned)
+summary(expectancy.lm.confounding)
+expenctancy.res = resid(expectancy.lm.confounding)
+
+
+#Check assumption
+plot(expectancy.lm.confounding)
+#linearity
+plot(fitted(expectancy.lm.confounding), expenctancy.res, ylab='Residuals', xlab='Fitted value') 
+abline(0, 0)
+#ok
+#independece ok
+#homoscedasticity ok
+#Normality? 
+#try box-cox
+mult <- lm(cbind(data_2014_cleaned$Life.expectancy,data_2014_cleaned$Alcohol, data_2014_cleaned$Polio, data_2014_cleaned$Diphtheria, data_2014_cleaned$Hepatitis.B, data_2014_cleaned$GDP, data_2014_cleaned$Population) ~ 1)
+bc <- powerTransform(mult)
+summary(bc)
+alcohol2 <- log(data_2014_cleaned$Alcohol)
+polio2 <- (data_2014_cleaned$Polio)^4.25
+Diphtheria2 <- (data_2014_cleaned$Diphtheria)^3.74
+Hepatitis.B2 <- (data_2014_cleaned$Hepatitis.B)^3.15
+GDP2 <- (data_2014_cleaned$GDP)^0.12
+Population2 <- log(data_2014_cleaned$Population)
+expectancy.lm.confounding2 = lm(Life.expectancy ~ alcohol2+polio2+Diphtheria2+Hepatitis.B2+GDP2+Population2, data=data_2014_cleaned)
+plot(expectancy.lm.confounding2)
+#not much change, maybe just don't use at all
+
+#VIF
+vif(expectancy.lm.confounding)
+#Diphtheria and Hepatitis.B 6.5 and 5.16
+
+#Influential
+### The Influential Observations ####
+D <- cooks.distance(expectancy.lm.confounding)
+num_d_1 <- length(which(D > qf(0.5, 7, 131-7)))
+
+## DFFITS ##
+dfits <- dffits(expectancy.lm.confounding)
+num_dffits_1 <- length(which(abs(dfits) > 2*sqrt(7/131)))
+
+## DFBETAS ##
+dfb <- dfbetas(expectancy.lm.confounding)
+num_dfbetas_1 <- length(which(abs(dfb[,2]) > 2/sqrt(131)))
+
+
+#variable selection
+full.model <- lm(Life.expectancy ~ Adult.Mortality+Alcohol+infant.deaths+Measles+under.five.deaths+Total.expenditure+HIV.AIDS+thinness..1.19.years+thinness.5.9.years+Income.composition.of.resources+Polio+Diphtheria+Hepatitis.B+GDP+Population+percentage.expenditure+BMI+Schooling, data = data_2014_cleaned)
+sel.var.aic <- step(full.model, trace = 0, k = 2, direction = "both") 
+select_var_aic<-attr(terms(sel.var.aic), "term.labels")   
+select_var_aic
+
+n <- nrow(data_2014_cleaned)
+sel.var.bic <- step(full.model, trace = 0, k = log(n), direction = "both") 
+select_var_bic<-attr(terms(sel.var.bic), "term.labels")   
+select_var_bic
+
+### LASSO selection ###
+## Perform cross validation to choose lambda ##
+set.seed(1002656486)
+cv.out <- cv.glmnet(x = as.matrix(data_2014_cleaned[,5:22]), y = data_2014_cleaned$Life.expectancy, standardize = T, alpha = 1)
+#To find lambda that gives slightly higher mse but less predictors lambda = 2.~
+plot(cv.out)
+best.lambda <- cv.out$lambda.1se
+best.lambda
+co<-coef(cv.out, s = "lambda.1se")
+co #age lcp gleason not selected
+
+#Selection of the significant features(predictors)
+
+## threshold for variable selection ##
+
+thresh <- 0.00 #higher for many variables 0 select variables given by LASSO
+# select variables #
+inds<-which(abs(co) > thresh )
+variables<-row.names(co)[inds]
+sel.var.lasso<-variables[!(variables %in% '(Intercept)')]
+sel.var.lasso
+
+
+#add Adult.Mortality Total.expenditure HIV.AIDS Income.composition.of.resources
+expectancy.lm.confounding.added = lm(Life.expectancy ~ Alcohol+Polio+Diphtheria+Hepatitis.B+GDP+Population+Adult.Mortality+Total.expenditure+HIV.AIDS+Income.composition.of.resources, data=data_2014_cleaned)
+summary(expectancy.lm.confounding.added)
+summary(expectancy.lm.confounding)
+
+#check assumption
+plot(expectancy.lm.confounding.added)
+#box cox
+mult <- lm(cbind(data_2014_cleaned$Life.expectancy,data_2014_cleaned$Alcohol, data_2014_cleaned$Polio, data_2014_cleaned$Diphtheria, data_2014_cleaned$Hepatitis.B, data_2014_cleaned$GDP, data_2014_cleaned$Population, data_2014_cleaned$Adult.Mortality, data_2014_cleaned$Total.expenditure, data_2014_cleaned$HIV.AIDS, data_2014_cleaned$Income.composition.of.resources) ~ 1)
+bc <- powerTransform(mult)
+summary(bc)
+#VIF
+vif(expectancy.lm.confounding.added)
+#Diphtheria and Hepatitis.B 6.5 and 5.16
+
+#Influential
+### The Influential Observations ####
+D1 <- cooks.distance(expectancy.lm.confounding.added)
+num_d_2 <- length(which(D1 > qf(0.5, 11, 131-11)))
+
+## DFFITS ##
+dfits1 <- dffits(expectancy.lm.confounding.added)
+num_dffits_2 <- length(which(abs(dfits1) > 2*sqrt(11/131)))
+
+
+## DFBETAS ##
+dfb1 <- dfbetas(expectancy.lm.confounding.added)
+num_dfbetas_2 <- length(which(abs(dfb1[,2]) > 2/sqrt(131)))
+
+
+
+
+
+sel.var <- c('Alcohol','Polio','Diphtheria','Hepatitis.B','GDP','Population','Adult.Mortality','Total.expenditure','HIV.AIDS','Income.composition.of.resources')
+ 
+#Cross Validation
+### Cross Validation and prediction performance of LAASO and BIC based selection ###
+ols.laaso.bic <- ols(Life.expectancy ~ ., data = data_2014_cleaned[,which(colnames(data_2014_cleaned) %in% c(sel.var, 'Life.expectancy'))], 
+               x=T, y=T, model = T)
+
+## 3 fold cross validation ##    
+cross <- calibrate(ols.laaso.bic, method = "crossvalidation", B = 3) #3 for small dataset or 5
+
+
+```
+
+
+```{r, echo=FALSE,message=FALSE, warning=FALSE, results='asis'}
+stargazer(expectancy.lm.confounding, expectancy.lm.confounding.added, type = "latex", intercept.bottom=FALSE, single.row=TRUE,header=FALSE, title = "Association between life expectancy, alcohol consumption and immunization coverage based on two linear regression models", column.labels = c("Initial Model", "Final Model"))
+```
+The initial model we have takes the form of:
+\begin{align*}
+y_{life\ expectancy} = \beta_0 + \beta_1 x_{Alcohol\ Consumption} + \beta_2 x_{Polio}  +\beta_3 x_{Diphetheria} \\
++\beta_4 x_{Hepatitis. B}+ \beta_5 x_{GDP} + \beta_6 x_{Population} +\epsilon
+\end{align*}
+
+Table 2 shows that the coefficient of *Alcohol* is 0.764, which is significant at a p-level of 0.01. Similarly, we see a positive association between *Polio*, *Diphtheria*, and *Life.expectancy*. Whereas the *Hepatitis. B* has a negative relationship with *Life.expectancy*. Among the three variables measuring vaccine coverage, only the coefficient for *Polio* is significant at a p-level of 0.05. The model has an adjusted $R^{2}$ of 0.381.
+
+Based on Fig. 3 in the appendix, we conclude that linearity and homoscedasticity are satisfied. Since our data comes from independent countries, the independence assumption is satisfied. We may have a mild violation of the normality assumption. No transformation is applied due to the goal of the report. 
+
+
+```{r, echo=FALSE,message=FALSE, warning=FALSE}
+
+selection_names <- c("AIC based selection", "BIC based selection", "LASSO based selection")
+variable_selected <- c(c("Adult.Mortality, infant.deaths, under.five.deaths, Total.expenditure, HIV.AIDS, Income.composition.of.resources"), c("Adult.Mortality, Total.expenditure, HIV.AIDS, Income.composition.of.resources"), c("Adult.Mortality, Total.expenditure, HIV.AIDS, Income.composition.of.resources"))
+data.frame(selection_names,variable_selected) %>%
+  kable(caption = "Variables selected based on different criteria",
+    col.names = c("Selection Method", "Variables Selected"))
+
+
+
+```
+### Final Model
+
+Since the adjusted $R^{2}$ is relatively low for the initial model, we need to improve our model's fit via variable selection. Table. 3 summarizes the variables chosen based on different criteria through stepwise variable selection. As our goal is to identify the relationship, we should have fewer variables. Thus, these variables appearing in all three criteria were chosen as part of our final model:
+\begin{align*}
+y_{life\ expectancy} = \beta_0 + \beta_1 x_{Alcohol\ Consumption} + \beta_2 x_{Polio}  +\beta_3 x_{Diphetheria}\\ +\beta_4 x_{Hepatitis. B}+ \beta_5 x_{GDP} + \beta_6 x_{Population} + \beta_7 x_{Adult\ Mortality} +\beta_8 x_{Total\ expenditure}\\ 
+\beta_9 x_{HIV Rate}+\beta_{10} x_{HDI}+\epsilon\
+\end{align*}
+After fitting the final model, we see that the final model outperforms the initial model since the adjusted $R^{2}$ more than doubled. Our interpretation will be based on the final model since it fits the data better.
+
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE,fig.height=6.5}
+par(mfrow = c(2, 2))
+plot(expectancy.lm.confounding.added)
+title("Figure.1 Diagnostic plots for final model", line=-0.78, outer=TRUE)
+
+```
+According to Fig.1, all assumptions are satisfied for our final model except for a minor violation of normality. Again, we will not apply any transformation. 
+
+Table. 4 in the appendix shows only the VIF of *Diphtheria* and *Hepatitis. B* is slightly above 5 for both models, which indicates some multicollinearity. Since both predictors are essential for the report's goal, we will keep them in our model.  
+
+Table. 5 in the appendix shows the number of influential observations for each model based on different criteria. We will keep them in the dataset since we do not have a contextual reason to remove them.
+
+
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+plot(cross, las = 1, xlab = "Predicted life expectancy", main = "Cross-Validation calibration")
+title("Fig. 2 Calibration plot for final model",outer=TRUE, line=-0.78)
+```
+Based on Fig. 2, the bias-corrected curve is very close to the ideal curve; our final model has outstanding good prediction accuracy.
+
+## Discussion
+### Interpretation of final model
+Based on the estimated coefficients of the final model in table 2, a one-liter increase in alcohol consumption per capita will increase life expectancy by 0.042. In terms of the Polio vaccine, a one percent increase in coverage decreases life expectancy by 0.015. Moreover, a one percent increase in Diphtheria coverage increases life expectancy by 0.015. Lastly, a one percent increase in Hepatitis. B coverage increases life expectancy by only 0.003. All these interpretations are made when holding other variables at a constant. However, none of these effects are statistically significant. Instead, life expectancy is more influenced by adult mortality, percentage expenditure on health, HIV-caused deaths per 1000, and the HDI index of a country. In other words, the model shows that the effect of alcohol consumption and immunization coverage on life expectancy is not significant. Governments should consider other health policies to improve life expectancy based on the result.
+
+### Limitations
+A major limitation of this report is the model specification; a multiple linear regression may not capture the proper relationship between alcohol consumption, immunization coverage, and life expectancy. Also, we still have multicollinearity and mild violation of normality in the final model; our coefficient estimates may be biased. In the report, we did not apply any transformation as the interpretability of our model will suffer.
+
+In terms of data, we only fit the model on the data from 2014, so multiple linear regression is appropriate. The estimated effects may differ if we fit a different model over the years.
+
+
+\pagebreak
+
+
+## References
+
+Zhou, F., Santoli, J., Messonnier, M. L., Yusuf, H. R., Shefer, A., Chu, S. Y., Rodewald, L., & Harpaz, R. (2005). Economic Evaluation of the 7-Vaccine Routine Childhood Immunization Schedule in the United States, 2001. Archives of Pediatrics & Adolescent Medicine, 159(12), 1136–1144. https://doi.org/10.1001/archpedi.159.12.1136
+
+Callaghan, T., Moghtaderi, A., Lueck, J. A., Hotez, P., Strych, U., Dor, A., Fowler, E. F., & Motta, M. (2021). Correlates and disparities of intention to vaccinate against COVID-19. Social Science & Medicine (1982), 272, 113638–113638. https://doi.org/10.1016/j.socscimed.2020.113638
+  
+Thompson K, Dutton DJ, MacNabb K, Liu T, Blades S, Asbridge M. Changes in alcohol consumption during the COVID-19 pandemic: exploring gender differences and the role of emotional distress. Health Promot Chronic Dis Prev Can. 2021;41(9):254-63. https://doi.org/10.24095/hpcdp.41.9.02
+
+Danilova, I., Shkolnikov, V. M., Andreev, E., & Leon, D. A. (2020). The changing relation between alcohol and life expectancy in Russia in 1965–2017. Drug and Alcohol Review, 39(7), 790–796. https://doi.org/10.1111/dar.13034
+
+Östergren O, Martikainen P, Tarkiainen L, et al
+Contribution of smoking and alcohol consumption to income differences in life expectancy: evidence using Danish, Finnish, Norwegian and Swedish register data
+J Epidemiol Community Health 2019;73:334-339.
+
+Linden, M., & Ray, D. (2017). Aggregation bias-correcting approach to the health–income relationship: Life expectancy and GDP per capita in 148 countries, 1970–2010. Economic Modelling, 61, 126–136. https://doi.org/10.1016/j.econmod.2016.12.001
+
+
+## Appendix
+```{r, echo = FALSE, message=FALSE, warning=FALSE,fig.height=6.5}
+par(mfrow = c(2, 2))
+plot(expectancy.lm.confounding)
+title("Figure.3 Diagnostic plots for initial model", line=-0.78, outer=TRUE)
+
+```
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+vif_values1 <- c(round(vif(expectancy.lm.confounding),2),0,0,0,0)
+vif_values2 <- c(round(vif(expectancy.lm.confounding.added),2))
+data.frame(vif_values1,vif_values2) %>%
+  kable(caption = "Variance inflation factor for each variables based on two models",
+    col.names = c("VIF based on initial model", "VIF based on final model"))
+
+```
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+Criteria <- c("Cook's distance", "DFFITS", "DFBETAS")
+influ_obs1 <- c(num_d_1, num_dffits_1, num_dfbetas_1)
+influ_obs2 <- c(num_d_2, num_dffits_2, num_dfbetas_2)
+data.frame(Criteria,influ_obs1,influ_obs2) %>%
+  kable(caption = "Number of influential observations for each model based on different criteria",
+    col.names = c("Criteria", "Number of Influential observations for initial model","Number of Influential observations for final model"))
+
+```
